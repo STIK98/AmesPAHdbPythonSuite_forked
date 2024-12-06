@@ -983,11 +983,13 @@ class Transitions(Data):
         - Mattioda et al. 2005c  
         - Mattioda et al. 2008. 
 
-        :Params f: frequencies in wavenumber
-
-        :Returns: float array
+        :param f: Frequencies in wavenumber (can be a single float or np.ndarray).
+        :return: Array of calculated cross-sections.
         """
+        # Ensure `f` is treated as an array
+        f = np.atleast_1d(f)
 
+        # Convert frequency to wavelength
         wave = 1e4 / f
 
         #entry 1 and 2 from Draine & Li (2007), (but these are not different from Li & Draine 2001), 
@@ -1033,7 +1035,6 @@ class Transitions(Data):
                     axis=0,
                 ))
 
-        return crosssection
 
 
     @staticmethod
