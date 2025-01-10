@@ -1222,7 +1222,7 @@ class Transitions(Data):
     def mean_energy_squared(**keywords):
         """
         Callback function to calculate the mean energy in erg^2 for a given
-        blackbody temperatyre.
+        blackbody temperature.
 
         :Returns: float array
 
