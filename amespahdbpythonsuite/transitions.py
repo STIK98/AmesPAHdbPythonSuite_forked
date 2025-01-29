@@ -978,18 +978,16 @@ class Transitions(Data):
         Calculates the PAH absorption cross-section per
         - Li & Draine 2001b, ApJ, 554:778-802 Eq. [11] 
         - Draine & 2007, ApJ, 657:810-837. Table 1, same as Li & Draine 2001
-
-        With NIR corrections from 
+        
+         With NIR corrections from 
         - Mattioda et al. 2005c  
         - Mattioda et al. 2008. 
 
-        :param f: Frequencies in wavenumber (can be a single float or np.ndarray).
-        :return: Array of calculated cross-sections.
-        """
-        # Ensure `f` is treated as an array
-        f = np.atleast_1d(f)
+        :Params f: frequencies in wavenumber
 
-        # Convert frequency to wavelength
+        :Returns: float array
+        """
+
         wave = 1e4 / f
 
         #entry 1 and 2 from Draine & Li (2007), (but these are not different from Li & Draine 2001), 
@@ -1035,6 +1033,7 @@ class Transitions(Data):
                     axis=0,
                 ))
 
+        return crosssection
 
 
     @staticmethod
