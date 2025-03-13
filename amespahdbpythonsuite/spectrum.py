@@ -559,7 +559,8 @@ class Spectrum(Transitions):
                     # and the model flux from fit.observation.
                     model_flux = fit.getfit()
                     chi2 = compute_chi2(flux, model_flux, obs.uncertainty.array)
-                    fit.gof = chi2  # Attach goodness-of-fit value to the fit object
+                    redchi2 = chi2/((len(obs.flux)-len(fit.data)))
+                    fit.gof = redchi2  # Attach goodness-of-fit value to the fit object
                     mcfits.append(fit)
 
         return MCFitted(
