@@ -9,7 +9,9 @@ import astropy.units as u  # type: ignore
 import numpy as np
 from astropy.nddata import StdDevUncertainty  # type: ignore
 from scipy import optimize  # type: ignore
+
 from specutils import Spectrum1D, manipulation  # type: ignore
+from tqdm import tqdm  # type: ignore
 
 from amespahdbpythonsuite.amespahdb import AmesPAHdb
 from amespahdbpythonsuite.transitions import Transitions
@@ -17,9 +19,9 @@ from amespahdbpythonsuite.transitions import Transitions
 if TYPE_CHECKING:
     from amespahdbpythonsuite.coadded import Coadded
     from amespahdbpythonsuite.fitted import Fitted
-    from amespahdbpythonsuite.observation import Observation
     from amespahdbpythonsuite.mcfitted import MCFitted
 
+from amespahdbpythonsuite.observation import Observation
 import copy
 import multiprocessing as mp
 from functools import partial
@@ -521,7 +523,7 @@ class Spectrum(Transitions):
                         observation=obs_fit,
                         weights=weights,
                         method="NNLC",
-                        gof=chi2,  # Attach goodness-of-fit value
+                        redchi2=chi2,  # Attach goodness-of-fit value
                     )
                 )
             pool.close()
@@ -555,7 +557,7 @@ class Spectrum(Transitions):
                     model_flux = fit.getfit()
                     chi2 = compute_chi2(flux, model_flux, obs.uncertainty.array)
                     redchi2 = chi2/((len(obs.flux)-len(fit.data)))
-                    fit.gof = redchi2  # Attach goodness-of-fit value to the fit object
+                    fit.redchi2 = redchi2  # Attach goodness-of-fit value to the fit object
                     mcfits.append(fit)
 
         return MCFitted(
@@ -563,8 +565,136 @@ class Spectrum(Transitions):
             distribution="uniform" if uniform else "normal",
             observation=obs,
         )
+    def mcfit_randomized(self, y, yerr=list(), samples=1024, subset_size=None, normalization='max', uniform=False, notice=True):
+        from amespahdbpythonsuite.fitted import Fitted
+        from amespahdbpythonsuite.mcfitted import MCFitted
+        """
+        Monte Carlo fit with randomized PAH subsets and per-PAH normalization.
+
+        Parameters
+        ----------
+        y : observed flux (array or Spectrum1D)
+        yerr : uncertainty array
+        samples : number of Monte Carlo samples
+        subset_size : number of PAHs to sample per run (default = 3 × n_data)
+        normalization : 'max', 'area', or 'per_carbon'
+        uniform : sample noise from uniform instead of normal distribution
+        """
+        
+        if isinstance(y, Observation):
+            obs = copy.deepcopy(y.spectrum)
+        else:
+            unc = None
+            if np.any(yerr):
+                unc = StdDevUncertainty(yerr)
+            obs = y if isinstance(y, Spectrum1D) else Spectrum1D(
+                flux=y * self.units["ordinate"]["unit"],
+                spectral_axis=self.grid * self.units["abscissa"]["unit"],
+                uncertainty=unc,
+            )
+
+        if obs.uncertainty is None:
+            raise ValueError("Uncertainties are required for mcfit_randomized.")
+
+        n_data = len(obs.flux)
+        if subset_size is None:
+            subset_size = min(50, int(3 * n_data))
+
+        mcfits = []
+
+        def compute_chi2(data_flux, model_flux, uncertainty):
+            residual = data_flux - model_flux
+            return np.sum((residual / uncertainty) ** 2)
+
+        all_uids = list(self.data.keys())
+        spectra = self.data
+
+        for _ in tqdm(range(samples), desc="mcfit_randomized", unit="sample", colour="green"):
+            actual_subset_size = min(subset_size, len(all_uids))
+            if actual_subset_size < subset_size and notice:
+                print(f"⚠️ Only {actual_subset_size} PAHs available, using all for this MC run.")
+
+            sampled_uids = np.random.choice(all_uids, size=actual_subset_size, replace=False)
+            matrix = []
+
+            for uid in sampled_uids:
+                spec = spectra[uid].copy()
+                if normalization == 'max':
+                    spec /= np.max(spec) if np.max(spec) != 0 else 1
+                elif normalization == 'area':
+                    spec /= np.sum(spec) if np.sum(spec) != 0 else 1
+                elif normalization == 'per_carbon':
+                    Nc_i = self.pahdb.getspeciesbyuid([uid]).get()["data"][uid]["nc"]
+                    spec /= Nc_i if Nc_i != 0 else 1
+                matrix.append(spec)
+
+            matrix = np.array(matrix)
+            b = obs.flux.value
+            u = obs.uncertainty.array
+
+            if uniform:
+                perturbed_flux = u * np.random.uniform(-1, 1, b.shape) + b
+            else:
+                perturbed_flux = np.random.normal(b, u, b.shape)
+
+            # NNLS fit
+            m = np.divide(matrix, u)
+            scl = m.max()
+            m /= scl
+            solution, _ = optimize.nnls(m.T, np.divide(perturbed_flux, u), maxiter=1024, atol=1e-16)
+            solution /= scl
+
+            weights = {}
+            data = {}
+            used_uids = []
+            for uid, s, m_vec in zip(sampled_uids, solution, matrix):
+                if s > 0:
+                    used_uids.append(uid)
+                    weights[uid] = s
+                    data[uid] = s * m_vec * obs.flux.unit
+
+            model_flux = np.dot(solution, matrix)
+            chi2 = compute_chi2(perturbed_flux, model_flux, u)
+            print("the chi2 is:", chi2)
+            dof = len(obs.flux) - len(used_uids)
+            print("the dof is:", dof)
+            redchi2 = round(chi2 / dof, 3) if dof > 0 else None
+            print("the redchi2 is:", redchi2)
 
 
+            obs_fit = Spectrum1D(
+                flux=model_flux * obs.flux.unit,
+                spectral_axis=copy.deepcopy(obs.spectral_axis),
+                uncertainty=copy.deepcopy(obs.uncertainty),
+            )
+
+        fit = Fitted(
+            database=self.database,
+            version=self.version,
+            data=data,
+            pahdb=self.pahdb,
+            uids=used_uids,
+            model=self.model,
+            units=self.units,
+            shift=self._shift,
+            grid=self.grid,
+            profile=self.profile,
+            fwhm=self.fwhm,
+            observation=obs_fit,
+            weights=weights,
+            method="NNLC"
+        )
+
+        fit.redchi2 = redchi2  # <- assign it explicitly
+
+        mcfits.append(fit)
+
+
+        return MCFitted(
+            mcfits=mcfits,
+            distribution="uniform" if uniform else "normal",
+            observation=obs
+        )
 
 
 def _mcfit(_, m, x, u, uniform) -> tuple:
@@ -579,3 +709,4 @@ def _mcfit(_, m, x, u, uniform) -> tuple:
     solution, _ = optimize.nnls(m.T, np.divide(b, u), maxiter=1024, atol=1e-16)
 
     return solution, b
+    

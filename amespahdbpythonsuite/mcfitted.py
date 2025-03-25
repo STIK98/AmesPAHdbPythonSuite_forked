@@ -56,9 +56,9 @@ class MCFitted:
             "type": self.__class__.__name__,
             "mcfits": [
                 {
-                    "uids": fitted.uids,  # List of PAH UIDs in the fit
-                    "weights": fitted.weights,  # Dictionary {uid: weight}
-                    "gof": getattr(fitted, "gof", None),  # Goodness-of-fit value, if available
+                    "uids": fitted.uids,  #list of PAH UIDs in the fit
+                    "weights": fitted.weights,  #dictionary {uid: weight}
+                    "redchi2": getattr(fitted, "redchi2", None),  #reduced chi-squared
                 }
                 for fitted in self.mcfits
             ],
