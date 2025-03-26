@@ -565,6 +565,7 @@ class Spectrum(Transitions):
             distribution="uniform" if uniform else "normal",
             observation=obs,
         )
+    
     def mcfit_randomized(self, y, yerr=list(), samples=1024, subset_size=None, normalization='max', uniform=False, notice=True):
         from amespahdbpythonsuite.fitted import Fitted
         from amespahdbpythonsuite.mcfitted import MCFitted
@@ -655,11 +656,8 @@ class Spectrum(Transitions):
 
             model_flux = np.dot(solution, matrix)
             chi2 = compute_chi2(perturbed_flux, model_flux, u)
-            print("the chi2 is:", chi2)
             dof = len(obs.flux) - len(used_uids)
-            print("the dof is:", dof)
             redchi2 = round(chi2 / dof, 3) if dof > 0 else None
-            print("the redchi2 is:", redchi2)
 
 
             obs_fit = Spectrum1D(
@@ -668,27 +666,25 @@ class Spectrum(Transitions):
                 uncertainty=copy.deepcopy(obs.uncertainty),
             )
 
-        fit = Fitted(
-            database=self.database,
-            version=self.version,
-            data=data,
-            pahdb=self.pahdb,
-            uids=used_uids,
-            model=self.model,
-            units=self.units,
-            shift=self._shift,
-            grid=self.grid,
-            profile=self.profile,
-            fwhm=self.fwhm,
-            observation=obs_fit,
-            weights=weights,
-            method="NNLC"
-        )
+            fit = Fitted(
+                database=self.database,
+                version=self.version,
+                data=data,
+                pahdb=self.pahdb,
+                uids=used_uids,
+                model=self.model,
+                units=self.units,
+                shift=self._shift,
+                grid=self.grid,
+                profile=self.profile,
+                fwhm=self.fwhm,
+                observation=obs_fit,
+                weights=weights,
+                method="NNLC"
+            )
 
-        fit.redchi2 = redchi2  # <- assign it explicitly
-
-        mcfits.append(fit)
-
+            fit.redchi2 = redchi2 
+            mcfits.append(fit)
 
         return MCFitted(
             mcfits=mcfits,
