@@ -151,14 +151,20 @@ class Spectrum(Transitions):
         y: Union[Observation, Spectrum1D, list],
         yerr: list = list(),
         notice: bool = True,
+        normalization: Optional[str] = None,  # 'max', 'area', or 'per_carbon'
         **keywords,
     ) -> Optional[Fitted]:
         """
         Fits the input spectrum.
 
+        Parameters
+        ----------
+        normalization : str or None
+            Normalization method per PAH: 'max', 'area', or 'per_carbon'. 
+            If None, no normalization is applied (default/original behavior).
         """
-
         from amespahdbpythonsuite import observation
+        from amespahdbpythonsuite.fitted import Fitted
 
         if isinstance(y, Spectrum1D):
             obs = copy.deepcopy(y)
@@ -174,13 +180,22 @@ class Spectrum(Transitions):
                 uncertainty=unc,
             )
 
-        if obs.spectral_axis.unit != u.Unit() and obs.spectral_axis.unit != u.Unit(
-            "1/cm"
-        ):
+        if obs.spectral_axis.unit != u.Unit() and obs.spectral_axis.unit != u.Unit("1/cm"):
             message("EXPECTING SPECTRAL UNITS OF 1 / CM")
             return None
 
-        matrix = np.array(list(self.data.values()))
+        matrix = []
+        for uid, spec in self.data.items():
+            s = spec.copy()
+            if normalization == 'max':
+                s /= np.max(s) if np.max(s) != 0 else 1
+            elif normalization == 'area':
+                s /= np.sum(s) if np.sum(s) != 0 else 1
+            elif normalization == 'per_carbon':
+                Nc_i = self.pahdb.getspeciesbyuid([uid]).get()["data"][uid]["nc"]
+                s /= Nc_i if Nc_i != 0 else 1
+            matrix.append(s)
+        matrix = np.array(matrix)
 
         if obs.uncertainty is None:
             method = "NNLS"
@@ -204,40 +219,17 @@ class Spectrum(Transitions):
 
         solution /= m_scl / b_scl
 
-        # Initialize lists and dictionaries.
-        uids = list()
-        data = dict()
-        weights = dict()
+        uids = []
+        data = {}
+        weights = {}
 
-        # Retrieve uids, data, and fit weights dictionaries.
-        for (
-            uid,
-            s,
-            m,
-        ) in zip(self.uids, solution, matrix):
+        for uid, s, m_vec in zip(self.uids, solution, matrix):
             if s > 0:
-                intensities = []
                 uids.append(uid)
-                for d in m:
-                    intensities.append(s * d)
-                data[uid] = np.array(intensities)
+                data[uid] = s * m_vec * obs.flux.unit
                 weights[uid] = s
 
-        if notice:
-            message(
-                [
-                    " NOTICE: PLEASE TAKE CONSIDERABLE CARE WHEN INTERPRETING ",
-                    " THESE RESULTS AND PUTTING THEM IN AN ASTRONOMICAL       ",
-                    " CONTEXT. THERE ARE MANY SUBTLETIES THAT NEED TO BE TAKEN",
-                    " INTO ACCOUNT, RANGING FROM PAH SIZE, INCLUSION OF       ",
-                    " HETEROATOMS, ETC. TO DETAILS OF THE APPLIED EMISSION    ",
-                    " MODEL, BEFORE ANY THOROUGH ASSESSMENT CAN BE MADE.      ",
-                ]
-            )
-
-        from amespahdbpythonsuite.fitted import Fitted
-
-        return Fitted(
+        fit = Fitted(
             database=self.database,
             version=self.version,
             data=data,
@@ -253,6 +245,15 @@ class Spectrum(Transitions):
             weights=weights,
             method=method,
         )
+
+        if obs.uncertainty is not None:
+            model_flux = fit.getfit()
+            chi2 = np.sum(((obs.flux - model_flux).value / obs.uncertainty.array) ** 2)
+            dof = len(obs.flux) - len(data)
+            fit.rchi2 = round(chi2 / dof,3) if dof > 0 else float("inf")
+
+        return fit
+
 
     def plot(self, **keywords) -> None:
         """
@@ -568,8 +569,6 @@ class Spectrum(Transitions):
             distribution="uniform" if uniform else "normal",
             observation=obs,
         )
-
-
 
 
 def _mcfit(_, m, x, u, uniform) -> tuple:
