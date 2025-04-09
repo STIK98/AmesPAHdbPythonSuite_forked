@@ -152,6 +152,7 @@ class Spectrum(Transitions):
         yerr: list = list(),
         notice: bool = True,
         normalization: Optional[str] = None,  # 'max', 'area', or 'per_carbon'
+        method: Optional[str] = "auto",  # 'NNLS', 'NNLC', or 'auto' (default)
         **keywords,
     ) -> Optional[Fitted]:
         """
@@ -192,19 +193,31 @@ class Spectrum(Transitions):
             elif normalization == 'area':
                 s /= np.sum(s) if np.sum(s) != 0 else 1
             elif normalization == 'per_carbon':
-                Nc_i = self.pahdb.getspeciesbyuid([uid]).get()["data"][uid]["nc"]
+                Nc_i = self.pahdb['species'][uid]['n_c']
                 s /= Nc_i if Nc_i != 0 else 1
             matrix.append(s)
         matrix = np.array(matrix)
 
-        if obs.uncertainty is None:
+        if method == "auto":
+            use_nnls = obs.uncertainty is None
+        elif method.upper() == "NNLS":
+            use_nnls = True
+        elif method.upper() == "NNLC":
+            use_nnls = False
+        else:
+            raise ValueError(f"Unknown method: {method}")
+
+        if use_nnls:
             method = "NNLS"
             b = obs.flux.value
             m = matrix.copy()
         else:
+            if obs.uncertainty is None:
+                raise ValueError("NNLC requested, but no uncertainties provided.")
             method = "NNLC"
             b = np.divide(obs.flux.value, obs.uncertainty.array)
             m = np.divide(matrix, obs.uncertainty.array)
+
 
         if notice:
             message(f"DOING {method}")
@@ -213,7 +226,6 @@ class Spectrum(Transitions):
         m /= scl
 
         solution, _ = optimize.nnls(m.T, b, maxiter=1024, atol=1e-16)
-
         solution /= scl
 
         uids = []
