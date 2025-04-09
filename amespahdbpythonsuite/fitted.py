@@ -447,7 +447,7 @@ class Fitted(Spectrum):
         Retrieves the residual of the fit.
         """
         if self._residual is None:
-            self._residual = self.observation.flux.value - self.getfit()
+            self._residual = self.observation.flux.value - self.getfit().value
 
         return self._residual
 
