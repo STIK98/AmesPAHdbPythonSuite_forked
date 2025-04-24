@@ -33,6 +33,8 @@ class Spectrum(Transitions):
     Contains methods to fit and plot the input spectrum.
 
     """
+    # from plot_style import apply_presentation_style
+    # apply_presentation_style()
 
     def __init__(self, d: Optional[dict] = None, **keywords) -> None:
         super().__init__(d, **keywords)
@@ -180,23 +182,41 @@ class Spectrum(Transitions):
                 spectral_axis=self.grid * self.units["abscissa"]["unit"],
                 uncertainty=unc,
             )
+        # print(type(self.grid))
 
         if obs.spectral_axis.unit != u.Unit() and obs.spectral_axis.unit != u.Unit("1/cm"):
             message("EXPECTING SPECTRAL UNITS OF 1 / CM")
             return None
-
+        import matplotlib.pyplot as plt  # type: ignore
+        import matplotlib.pyplot as plt
+        import matplotlib.cm as cm
+        import matplotlib.colors as mcolors
         matrix = []
         for uid, spec in self.data.items():
             s = spec.copy()
             if normalization == 'max':
                 s /= np.max(s) if np.max(s) != 0 else 1
+                # print(f"UID: {uid}, norm method: max, norm-shape: {s/np.linalg.norm(s)}, norm max: {np.max(s)}")
+                # print("s:", s, "max:", np.max(s))
             elif normalization == 'area':
                 s /= np.sum(s) if np.sum(s) != 0 else 1
+                # print(f"UID: {uid}, norm method: {normalization}, norm-shape: {s/np.linalg.norm(s)}")
             elif normalization == 'per_carbon':
                 Nc_i = self.pahdb['species'][uid]['n_c']
                 s /= Nc_i if Nc_i != 0 else 1
+                # print(f"UID: {uid}, norm method: {normalization}, norm-shape: {s/np.linalg.norm(s)}")
+            else:
+                # print("s:", s, "max:", np.max(s))
+                print(f"UID: {uid}, norm method: None, max: {np.max(s)}, area: {np.sum(s)}, shape: {s/np.linalg.norm(s)}")
             matrix.append(s)
         matrix = np.array(matrix)
+        # for i in range(len(matrix)):
+        #     plt.plot(self.grid, matrix[i], label=f"UID: {self.uids[i]}")
+        # plt.xlabel(f"Wavenumbers cm$^{{-1}}$ [{self.units['abscissa']['unit'].to_string('latex_inline')}]")
+        # plt.ylabel(f"Normalized Intensity [{self.units['ordinate']['unit'].to_string('latex_inline')}]")
+        # plt.legend()
+        # plt.title("Normalized Spectra (original)")
+        # plt.show()
 
         if method == "auto":
             use_nnls = obs.uncertainty is None
@@ -217,7 +237,110 @@ class Spectrum(Transitions):
             method = "NNLC"
             b = np.divide(obs.flux.value, obs.uncertainty.array)
             m = np.divide(matrix, obs.uncertainty.array)
+            # print("flux unit", obs.flux.unit)
+            # print("b:", b, "obs", obs.flux.value, "uncertainty", obs.uncertainty.array, np.divide(obs.flux.value, obs.uncertainty.array))
 
+            # plt.figure(figsize=(8, 6))
+
+            # # Primary y-axis: Observed Flux ± Uncertainty
+            # ax1 = plt.gca()
+            # ax1.errorbar(
+            #     self.grid,
+            #     obs.flux.value,
+            #     yerr=obs.uncertainty.array,
+            #     fmt='o-',
+            #     color='black',
+            #     markersize=4,
+            #     ecolor='gray',
+            #     elinewidth=1,
+            #     capsize=2,
+            #     label="Observed Flux",
+            #     zorder=2
+            # )
+            # ax1.set_xlabel("Wavenumber [cm$^{-1}$]")
+            # ax1.set_ylabel(r"Observed Flux [W/m$^2$/cm$^{-1}$]")
+            # ax1.invert_xaxis()
+            # ax1.set_xlabel("Wavenumber [cm$^{-1}$]")
+
+
+            # # Secondary y-axis: NNLC flux (b vector)
+            # ax2 = ax1.twinx()
+            # ax2.plot(self.grid, b, color='red', linewidth=2, label="NNLC Flux (Flux / σ)", zorder=1)
+            # ax2.set_ylabel(r"NNLC Flux (Flux / σ) [W/m$^2$/cm$^{-1}$]", color='red', alpha=0.7)
+            # ax2.tick_params(axis='y', labelcolor='red')
+
+            # # Title and layout
+            # # plt.title("Comparison: Observed and NNLC-Transformed Flux")
+
+            # # Handle legends for both axes
+            # lines1, labels1 = ax1.get_legend_handles_labels()
+            # lines2, labels2 = ax2.get_legend_handles_labels()
+            # ax1.legend(lines1 + lines2, labels1 + labels2, loc='upper left', frameon=False)
+
+            # plt.tight_layout()
+            # plt.show()
+
+        # Plot the effect of NNLC scaling
+        # Get the colormap and generate N distinct colors
+        # cmap = cm.get_cmap("YlGnBu", len(matrix))  # N = number of PAHs
+
+        # plt.figure(figsize=(10, 6))
+        # for i in range(len(matrix)):
+        #     plt.plot(self.grid, matrix[i], color=cmap(i), alpha=0.9, label=f"UID {self.uids[i]}")
+        #     plt.plot(self.grid, m[i], color=cmap(i), linestyle='--', alpha=0.7, label=f"Scaled UID {self.uids[i]}")
+
+        # plt.plot(self.grid, obs.flux.value, label="Original Flux", color='black', linewidth=2)
+        # plt.plot(self.grid, b, label="Flux / Uncertainty (b vector)", color='red', linewidth=2)
+
+        # plt.xlabel("Wavenumber [cm$^{-1}$]")
+        # plt.ylabel("Flux or Scaled Flux")
+        # plt.legend(
+        #     loc='center left',
+        #     bbox_to_anchor=(1, 0.5),
+        #     fontsize=8,
+        #     ncol=1
+        # )
+        # plt.subplots_adjust(right=0.75)
+        # plt.title("NNLC Input Scaling: Matrix Rows and Observation Vector")
+        # plt.gca().invert_xaxis()
+        # plt.tight_layout()
+        # # plt.yscale('log')
+        # plt.show()
+
+        # import matplotlib.pyplot as plt
+        # import matplotlib.pyplot as plt
+        # from matplotlib import cm
+
+        # cmap = cm.get_cmap("YlGnBu", len(matrix))  # Color map for UIDs
+
+        # fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))  # No sharey
+
+        # # Plot 1: Original spectra
+        # for i in range(len(matrix)):
+        #     ax1.plot(self.grid, matrix[i], color=cmap(i), label=f"UID {self.uids[i]}")
+        # ax1.plot(self.grid, obs.flux.value, color='black', linewidth=3, label="Original Flux")
+        # ax1.set_title("Original PAH Spectra and Observation")
+        # ax1.set_xlabel("Wavenumber [cm$^{-1}$]")
+        # ax1.set_ylabel("Flux")
+        # ax1.invert_xaxis()
+        # ax1.legend(fontsize=8, loc="upper right")
+        # ax1.set_yscale('log')
+
+        # # Determine y-axis max from the left plot
+        # ymax_original = max([max(s) for s in matrix] + [max(obs.flux.value)])
+
+        # # Plot 2: Scaled spectra and b vector
+        # for i in range(len(matrix)):
+        #     ax2.plot(self.grid, m[i], color=cmap(i), linestyle='--', label=f"Scaled UID {self.uids[i]}")
+        # ax2.plot(self.grid, b, color='red', linewidth=2, label="b = Flux / Uncertainty")
+        # ax2.axhline(y=ymax_original, color='grey', linestyle=':', label="max original y")
+        # ax2.set_title("NNLC Inputs: Scaled PAH Spectra and b Vector")
+        # ax2.set_xlabel("Wavenumber [cm$^{-1}$]")
+        # ax2.invert_xaxis()
+        # ax2.legend(fontsize=8, loc="upper right")
+        # ax2.set_yscale('log')
+        # plt.tight_layout()
+        # plt.show()
 
         if notice:
             message(f"DOING {method}")
