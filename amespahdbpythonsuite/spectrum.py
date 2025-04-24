@@ -205,9 +205,6 @@ class Spectrum(Transitions):
                 Nc_i = self.pahdb['species'][uid]['n_c']
                 s /= Nc_i if Nc_i != 0 else 1
                 # print(f"UID: {uid}, norm method: {normalization}, norm-shape: {s/np.linalg.norm(s)}")
-            else:
-                # print("s:", s, "max:", np.max(s))
-                print(f"UID: {uid}, norm method: None, max: {np.max(s)}, area: {np.sum(s)}, shape: {s/np.linalg.norm(s)}")
             matrix.append(s)
         matrix = np.array(matrix)
         # for i in range(len(matrix)):
@@ -537,6 +534,7 @@ class Spectrum(Transitions):
         samples: int = 1024,
         uniform: bool = False,
         multiprocessing: bool = False,
+        normalization: Optional[str] = None,
         notice: bool = True,
         **keywords,
     ) -> Optional[MCFitted]:
@@ -585,7 +583,7 @@ class Spectrum(Transitions):
 
         #Calculate chi-square as a goodness of fit metric
         def compute_chi2(data_flux: np.ndarray, model_flux: np.ndarray, uncertainty: np.ndarray) -> float:
-            residual = data_flux - model_flux
+            residual = data_flux - model_flux.value if hasattr(model_flux, "unit") else model_flux
             return np.sum((residual / uncertainty) ** 2)
 
         mcfits = list()
@@ -657,7 +655,7 @@ class Spectrum(Transitions):
                         observation=obs_fit,
                         weights=weights,
                         method="NNLC",
-                        gof=chi2,  # Attach goodness-of-fit value
+                        rchi2=chi2,  # Attach goodness-of-fit value
                     )
                 )
             pool.close()
@@ -683,7 +681,8 @@ class Spectrum(Transitions):
                     )
 
                 # Fit the spectrum.
-                fit = self.fit(flux * obs.flux.unit, obs.uncertainty, notice=False)
+                fit = self.fit(flux * obs.flux.unit, obs.uncertainty, notice=False, normalization=normalization)
+
 
                 if fit:
                     # Compute chi-square using the perturbed flux (flux) as data
@@ -691,7 +690,7 @@ class Spectrum(Transitions):
                     model_flux = fit.getfit()
                     chi2 = compute_chi2(flux, model_flux, obs.uncertainty.array)
                     redchi2 = chi2/((len(obs.flux)-len(fit.data)))
-                    fit.gof = redchi2  # Attach goodness-of-fit value to the fit object
+                    fit.rchi2 = redchi2  # Attach goodness-of-fit value to the fit object
                     mcfits.append(fit)
 
         return MCFitted(
