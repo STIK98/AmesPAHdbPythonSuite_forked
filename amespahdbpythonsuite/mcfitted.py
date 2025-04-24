@@ -58,7 +58,7 @@ class MCFitted:
                 {
                     "uids": fitted.uids,  # List of PAH UIDs in the fit
                     "weights": fitted.weights,  # Dictionary {uid: weight}
-                    "gof": getattr(fitted, "gof", None),  # Goodness-of-fit value, if available
+                    "rchi2": getattr(fitted, "rchi2", None),  # Reduced chi-squared, if available
                 }
                 for fitted in self.mcfits
             ],
@@ -330,20 +330,64 @@ class MCFitted:
         ax.axhline(0, linestyle="--", color="gray", zorder=0)
         ax.legend(fontsize=10)
 
-        if keywords.get("save", False):
-            if keywords.get("output"):
-                if os.path.isdir(keywords["output"]):
-                    fig.savefig(
-                        f"{keywords['output']}/mc_{ptype}_breakdown.{keywords['ftype']}"
-                    )
-                else:
-                    fig.savefig(
-                        f"{keywords['output']}_mc_{ptype}_breakdown.{keywords['ftype']}"
-                    )
-            else:
-                fig.savefig(f"mc_{ptype}_breakdown.{keywords['ftype']}")
-        else:
+        if keywords.get("save", False) and not keywords.get("residual", False):
+            # Only save this plot if residual=False
+            output = keywords.get("output", f"mcfit_{ptype}_breakdown")
+            ftype = keywords.get("ftype", "pdf")
+            if os.path.isdir(output):
+                output = os.path.join(output, f"mcfit_{ptype}_breakdown")
+            fig.savefig(f"{output}.{ftype}")
+        elif not keywords.get("residual", False):
             plt.show()
+
+        if keywords.get("residual", False):
+            fig, (ax1, ax2) = plt.subplots(2, 1, sharex=True, height_ratios=[3, 1])
+            
+            # Main spectrum plot (replacing old ax with ax1)
+            ax = ax1  # everything before this line remains the same
+            ax1.minorticks_on()
+            ax1.tick_params(which="major", right="on", top="on", direction="in", length=5)
+            ax1.tick_params(which="minor", right="on", top="on", direction="in", length=3)
+            ax1.set_ylabel(
+                self.mcfits[0].units["ordinate"]["label"]
+                + " ["
+                + self.mcfits[0].units["ordinate"]["unit"].to_string("latex_inline")
+                + "]",
+            )
+            ax1.plot(x, fit["mean"], color="tab:purple", label="fit")
+            ax1.fill_between(x, fit["mean"] - fit["std"], fit["mean"] + fit["std"], color="tab:purple", alpha=0.3)
+
+            if isinstance(obs.uncertainty, StdDevUncertainty):
+                ax1.errorbar(
+                    x, obs.flux.value, yerr=obs.uncertainty.array,
+                    fmt="o", mfc="white", color="k", ecolor="k",
+                    markersize=3, elinewidth=0.2, capsize=0.8,
+                    label=datalabel
+                )
+            else:
+                ax1.plot(x, obs.flux.value, "ko", markersize=3, label=datalabel)
+
+            ax1.legend()
+
+            # Residuals
+            residual = obs.flux.value - fit["mean"]
+            ax2.axhline(0, linestyle="--", color="gray", linewidth=0.8)
+            ax2.plot(x, residual, "k-", linewidth=0.8)
+            ax2.set_ylabel("Residuals")
+            ax2.set_xlabel(xtitle)
+
+            if keywords.get("save", False):
+                if keywords.get("output"):
+                    outname = keywords["output"]
+                    if os.path.isdir(outname):
+                        outname = os.path.join(outname, "mcfit_residual")
+                    fig.savefig(f"{outname}.{keywords.get('ftype', 'pdf')}")
+                else:
+                    fig.savefig("mcfit_residual.pdf")
+            else:
+                plt.show()
+
+            plt.close(fig)
 
         plt.close(fig)
 
